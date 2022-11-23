@@ -32,5 +32,83 @@ Dependency
 
    * C compiler
 
-   * GNU make
+   * GNU make (not essential but recommended)
+
+   * Gnuplot (not essential but recommended)
+
+***********
+Quick start
+***********
+
+Sample dataset is attached (in ``data`` directory) for stand-alone execution:
+
+.. code-block::
+
+   $ make
+   $ ./a.out
+
+Result is written to ``clusters.dat``, which is an ASCII file containing coordinates of each polygonal chain.
+They can be visualised by ``Gnuplot``, e.g.,
+
+.. code-block::
+
+   $ plot 'clusters.dat' u 2:3 w lp
+
+***
+API
+***
+
+The main function of this library is ``cluster``, which is declared as
+
+.. code-block::
+
+   int cluster(
+       const bool periods[2],
+       const double lengths[2],
+       const size_t sizes[2],
+       const double threshold,
+       const double * restrict xs,
+       const double * restrict ys,
+       const double * restrict values,
+       size_t * restrict nclusters,
+       cluster_t *** restrict clusters
+   );
+
+Parameters:
+
+   * ``periods``
+
+      Boundary condition of two directions, periodic (``true``) or not (``false``)
+
+   * ``lengths``
+
+      Physical sizes
+
+   * ``sizes``
+
+      Number of grid points
+
+   * ``threshold``
+
+      Threshold to draw contour lines
+
+   * ``xs``
+
+      ``x`` coordinate (length of this vector should be ``sizes[0]``)
+
+   * ``ys``
+
+      ``y`` coordinate (length of this vector should be ``sizes[1]``)
+
+   * ``values``
+
+      Two-dimensional scalar field
+
+   * ``nclusters``
+
+      Result, number of clusters
+
+   * ``clusters``
+
+      Result, all polygonal chains
 
