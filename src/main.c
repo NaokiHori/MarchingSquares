@@ -71,7 +71,7 @@ int main(void){
   assert(nitems_vof[0] == nitems_yc);
   assert(nitems_vof[1] == nitems_xc);
   // main process
-  const bool periods[2] = {true, true};
+  const bool periods[2] = {false, true};
   const double lengths[2] = {lx, ly};
   const size_t sizes[2] = {nitems_xc, nitems_yc};
   const double threshold = 0.5;
@@ -83,9 +83,11 @@ int main(void){
   for(size_t n = 0; n < nclusters; n++){
     cluster_t *cluster = clusters[n];
     const size_t npoints = cluster->npoints;
+    vector_t *points = cluster->points;
     for(size_t m = 0; m < npoints; m++){
-      const double x = cluster->points[m][0];
-      const double y = cluster->points[m][1];
+      vector_t point = points[m];
+      const double x = point.x;
+      const double y = point.y;
       fprintf(fp, "%5zu % .7f % .7f\n", m, x, y);
     }
     fprintf(fp, "\n");

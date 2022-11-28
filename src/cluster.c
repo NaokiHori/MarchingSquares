@@ -4,28 +4,35 @@
 #include "cluster.h"
 
 
-static size_t go_to_neg(const bool is_periodic, const size_t nitems, size_t index){
-  if(index != 0){
-    return index - 1;
+static const int retval_success = 0;
+static const int retval_failure = 1;
+
+static int go_to_neg(const bool is_periodic, const size_t nitems, const double length, size_t *index, double *pcor){
+  if(*index != 0){
+    *index = *index - 1;
+    return retval_success;
   }else{
     if(is_periodic){
-      return nitems - 1;
+      *index = nitems - 1;
+      *pcor -= length;
+      return retval_success;
     }else{
-      printf("%d: collide with a wall\n", __LINE__);
-      exit(EXIT_FAILURE);
+      return retval_failure;
     }
   }
 }
 
-static size_t go_to_pos(const bool is_periodic, const size_t nitems, size_t index){
-  if(index != nitems - 1){
-    return index + 1;
+static int go_to_pos(const bool is_periodic, const size_t nitems, const double length, size_t *index, double *pcor){
+  if(*index != nitems - 1){
+    *index = *index + 1;
+    return retval_success;
   }else{
     if(is_periodic){
-      return 0;
+      *index = 0;
+      *pcor += length;
+      return retval_success;
     }else{
-      printf("%d: collide with a wall\n", __LINE__);
-      exit(EXIT_FAILURE);
+      return retval_failure;
     }
   }
 }
@@ -33,6 +40,23 @@ static size_t go_to_pos(const bool is_periodic, const size_t nitems, size_t inde
 // information on vertices, from (x-neg, y-neg) to anti-clockwise
 // 1: value > threshold
 // 0: value < threshold
+//
+// Each bit
+//
+//   4th  3rd
+//    +----+
+//    |    |
+//    +----+
+//   1st  2nd
+//
+// E.g.,
+//
+//   0.9  0.6
+//    <----+
+//         |     0b1101
+//    -----+    <-------
+//   0.7  0.2
+//
 typedef unsigned int vertices_t;
 // information on edges, from x_neg to anti-clockwise
 // 1: interface          passes on the edge
@@ -41,80 +65,81 @@ typedef unsigned int edges_t;
 // direction walking to and from, from x_neg to anti-clockwise
 typedef unsigned int dir_t;
 
-typedef struct {
-  double x;
-  double y;
-} point_t;
+// node for singly-linked list
+typedef struct node_t_ {
+  void *data;
+  struct node_t_ *next;
+} node_t;
 
-typedef struct points_t_ {
-  point_t point;
-  struct points_t_ *next;
-} points_t;
-
-static int append_point(points_t **points, const point_t point, const point_t pcors){
-  point_t presult = { .x = 0., .y = 0. };
-  presult.x = point.x + pcors.x;
-  presult.y = point.y + pcors.y;
-  if(*points == NULL){
-    *points = calloc(1, sizeof(points_t));
-    (*points)->point = presult;
+static void insert(node_t **root_node, const bool to_head, void *data){
+  /* add a new node with a given data to singly-linked list */
+  // allocate new node, assign data
+  node_t *new_node = calloc(1, sizeof(node_t));
+  new_node->data = data;
+  // insert to the given linked list
+  if(*root_node == NULL){
+    // empty list, the new node comes to the first
+    *root_node = new_node;
   }else{
-    points_t *tmp = *points;
-    while(tmp->next){
-      tmp = tmp->next;
+    // member(s) already exist
+    if(to_head){
+      // the new node comes to the first
+      new_node->next = *root_node;
+      *root_node = new_node;
+    }else{
+      // the new node comes to the end
+      // move forward to the end
+      node_t *node = *root_node;
+      while(node->next != NULL){
+        node = node->next;
+      }
+      node->next = new_node;
     }
-    tmp->next = calloc(1, sizeof(points_t));
-    tmp->next->point = presult;
   }
-  return 0;
 }
 
-typedef struct clusters_t_ {
-  cluster_t *cluster;
-  struct clusters_t_ *next;
-} clusters_t;
+static void insert_point(node_t **root_node, const bool to_head, const vector_t point, const vector_t pcor){
+  // new point, taking into account the periodicity
+  vector_t *new_point = calloc(1, sizeof(vector_t));
+  new_point->x = point.x + pcor.x;
+  new_point->y = point.y + pcor.y;
+  // insert to the given list
+  insert(root_node, to_head, new_point);
+}
 
-static int append_cluster(clusters_t **clusters, points_t **points){
+static void append_cluster(node_t **root_node_cluster, node_t **root_node_point){
+  // count number of points
   size_t npoints = 0;
   {
-    points_t *tmp = *points;
-    while(tmp){
-      tmp = tmp->next;
+    node_t *node = *root_node_point;
+    while(node){
+      node = node->next;
       npoints++;
     }
   }
+  // copy info to cluster_t
   cluster_t *cluster = calloc(1, sizeof(cluster_t));
   cluster->npoints = npoints;
-  cluster->points = calloc(npoints, sizeof(double[2]));
-  {
-    size_t n = 0;
-    while(*points){
-      cluster->points[n][0] = (*points)->point.x;
-      cluster->points[n][1] = (*points)->point.y;
-      points_t *tmp = *points;
-      *points = (*points)->next;
-      free(tmp);
-      n++;
-    }
+  cluster->points = calloc(npoints, sizeof(vector_t));
+  for(size_t n = 0; n < npoints; n++){
+    vector_t *point = (*root_node_point)->data;
+    cluster->points[n].x = point->x;
+    cluster->points[n].y = point->y;
+    // deallocate original node storing points
+    node_t *node = *root_node_point;
+    *root_node_point = (*root_node_point)->next;
+    free(node->data);
+    free(node);
   }
-  if(*clusters == NULL){
-    *clusters = calloc(1, sizeof(clusters_t));
-    (*clusters)->cluster = cluster;
-  }else{
-    clusters_t *tmp = *clusters;
-    while(tmp->next){
-      tmp = tmp->next;
-    }
-    tmp->next = calloc(1, sizeof(clusters_t));
-    tmp->next->cluster = cluster;
-  }
-  return 0;
+  // insert a node whose data is the above cluster to singly-linked list
+  //   true: add to the head
+  insert(root_node_cluster, true, cluster);
 }
 
 typedef struct {
   edges_t edges;
   int padding;
-  point_t intercepts[4];
+  vector_t intercepts[4];
 } cell_t;
 
 static double interpolate(const double y0, const double xm, const double xp, const double ym, const double yp){
@@ -172,7 +197,7 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
       es |= (1 << 2) & ( ( (vs >> 2) ^ (vs >> 3) ) << 2 );
       es |= (1 << 3) & ( ( (vs >> 3) ^ (vs >> 0) ) << 3 );
       /* intercepts of cell faces and interface */
-      point_t intercepts[4];
+      vector_t intercepts[4];
       // y-negative face
       intercepts[0].x = interpolate(threshold, lxs[0], lxs[1], lvals[0][0], lvals[1][0]);
       intercepts[0].y = lys[0];
@@ -193,7 +218,7 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
     }
   }
   // singly-linked list storing all clusters
-  clusters_t *clusters = NULL;
+  node_t *clusters = NULL;
   for(size_t j_start = 0; j_start < ny; j_start++){
     for(size_t i_start = 0; i_start < nx; i_start++){
       // find start to walk around
@@ -204,72 +229,117 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
       }
       /* try to extract closed loop */
       // periodicity corrections
-      point_t pcors = { .x = 0., .y = 0. };
-      points_t *points = NULL;
+      vector_t pcor = { .x = 0., .y = 0. };
+      node_t *points = NULL;
       size_t i = i_start;
       size_t j = j_start;
-      // decide first motion: where I came from
+      // where I came from and where I will go to
       dir_t dir_fr = 0;
+      dir_t dir_to = 0;
+      // decide first motion: where I came from
       for(size_t n = 0; n < 4; n++){
         if(cell.edges & (1 << n)){
           dir_fr = (1 << n);
           break;
         }
       }
+      const dir_t dir_to_restart = dir_fr;
+      // by default, append point to the tail of list
+      // once hit the wall, append to the head of list
+      bool to_head = true;
+      size_t cnt_hit_wall = 0;
       // walk around until a closed loop is created
-      do {
-        // decide next destination
-        dir_t dir_to = 0;
-        const edges_t edges = cells[j * nx + i].edges;
-        if( (edges & (1 << 0)) && (edges & (1 << 1)) && (edges & (1 << 2)) && (edges & (1 << 3)) ){
-          // saddle, select anti-clockwise neighbour
-          dir_to = (1 & (dir_fr >> 3)) ? dir_fr >> 3 : dir_fr << 1;
-        }else{
-          // not saddle
-          dir_to = cells[j * nx + i].edges ^ dir_fr;
+      while(true) {
+        if(dir_to == 0){
+          // decide next destination
+          const edges_t edges = cells[j * nx + i].edges;
+          if( (edges & (1 << 0)) && (edges & (1 << 1)) && (edges & (1 << 2)) && (edges & (1 << 3)) ){
+            // saddle, select anti-clockwise neighbour
+            dir_to = (1 & (dir_fr >> 3)) ? dir_fr >> 3 : dir_fr << 1;
+          }else{
+            // not saddle
+            dir_to = cells[j * nx + i].edges ^ dir_fr;
+          }
+          // erase current route
+          cells[j * nx + i].edges ^= (dir_to | dir_fr);
         }
-        // erase current route
-        cells[j * nx + i].edges ^= (dir_to | dir_fr);
         // update 1. position and 2. where I came from
         switch(dir_to){
           case (1 << 0):
             {
-              if(y_is_periodic && j == 0){
-                pcors.y -= ly;
+              // append cell-face point (to which I will move) to the list
+              insert_point(&points, to_head, cells[j * nx + i].intercepts[0], pcor);
+              // move (i.e., update index and periodic correction)
+              const bool retval = go_to_neg(y_is_periodic, ny, ly, &j, &(pcor.y));
+              if(retval == retval_success){
+                // update where I came from
+                dir_fr = 1 << 2;
+                dir_to = 0;
+              }else{
+                // hit wall, go back to the root node
+                //   and walk toward the opposite direction
+                cnt_hit_wall++;
+                to_head = false;
+                i = i_start;
+                j = j_start;
+                dir_to = dir_to_restart;
+                pcor.x = 0.;
+                pcor.y = 0.;
               }
-              j = go_to_neg(y_is_periodic, ny, j);
-              dir_fr = 1 << 2;
-              append_point(&points, cells[j * nx + i].intercepts[2], pcors);
               break;
             }
           case (1 << 1):
             {
-              if(x_is_periodic && i == nx-1){
-                pcors.x += lx;
+              insert_point(&points, to_head, cells[j * nx + i].intercepts[1], pcor);
+              const bool retval = go_to_pos(x_is_periodic, nx, lx, &i, &(pcor.x));
+              if(retval == retval_success){
+                dir_fr = 1 << 3;
+                dir_to = 0;
+              }else{
+                cnt_hit_wall++;
+                to_head = false;
+                i = i_start;
+                j = j_start;
+                dir_to = dir_to_restart;
+                pcor.x = 0.;
+                pcor.y = 0.;
               }
-              i = go_to_pos(x_is_periodic, nx, i);
-              dir_fr = 1 << 3;
-              append_point(&points, cells[j * nx + i].intercepts[3], pcors);
               break;
             }
           case (1 << 2):
             {
-              if(y_is_periodic && j == ny-1){
-                pcors.y += ly;
+              insert_point(&points, to_head, cells[j * nx + i].intercepts[2], pcor);
+              const bool retval = go_to_pos(y_is_periodic, ny, ly, &j, &(pcor.y));
+              if(retval == retval_success){
+                dir_fr = 1 << 0;
+                dir_to = 0;
+              }else{
+                cnt_hit_wall++;
+                to_head = false;
+                i = i_start;
+                j = j_start;
+                dir_to = dir_to_restart;
+                pcor.x = 0.;
+                pcor.y = 0.;
               }
-              j = go_to_pos(y_is_periodic, ny, j);
-              dir_fr = 1 << 0;
-              append_point(&points, cells[j * nx + i].intercepts[0], pcors);
               break;
             }
           case (1 << 3):
             {
-              if(x_is_periodic && i == 0){
-                pcors.x -= lx;
+              insert_point(&points, to_head, cells[j * nx + i].intercepts[3], pcor);
+              const bool retval = go_to_neg(x_is_periodic, nx, lx, &i, &(pcor.x));
+              if(retval == retval_success){
+                dir_fr = 1 << 1;
+                dir_to = 0;
+              }else{
+                cnt_hit_wall++;
+                to_head = false;
+                i = i_start;
+                j = j_start;
+                dir_to = dir_to_restart;
+                pcor.x = 0.;
+                pcor.y = 0.;
               }
-              i = go_to_neg(x_is_periodic, nx, i);
-              dir_fr = 1 << 1;
-              append_point(&points, cells[j * nx + i].intercepts[1], pcors);
               break;
             }
           default:
@@ -278,7 +348,16 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
               exit(EXIT_FAILURE);
             }
         }
-      } while(i != i_start || j != j_start);
+        // termination conditions
+        if(cnt_hit_wall == 0){
+          if(i == i_start && j == j_start){
+            break;
+          }
+        }
+        if(cnt_hit_wall == 2){
+          break;
+        }
+      }
       append_cluster(&clusters, &points);
     }
   }
@@ -286,9 +365,9 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
   // convert singly-linked list "clusters" to desired shape
   *nclusters = 0;
   {
-    clusters_t *tmp = clusters;
-    while(tmp){
-      tmp = tmp->next;
+    node_t *node = clusters;
+    while(node){
+      node = node->next;
       (*nclusters)++;
     }
   }
@@ -296,10 +375,10 @@ int cluster(const bool periods[2], const double lengths[2], const size_t sizes[2
   {
     size_t n = 0;
     while(clusters){
-      (*clusters_)[n] = clusters->cluster;
-      clusters_t *tmp = clusters;
-      clusters = clusters->next;
-      free(tmp);
+      (*clusters_)[n] = clusters->data;
+      node_t *node = clusters;
+      clusters = node->next;
+      free(node);
       n++;
     }
   }

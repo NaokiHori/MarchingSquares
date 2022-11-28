@@ -5,8 +5,13 @@
 #include <stdbool.h>
 
 typedef struct {
+  double x;
+  double y;
+} vector_t;
+
+typedef struct {
   size_t npoints;
-  double (*points)[2];
+  vector_t *points;
 } cluster_t;
 
 extern int cluster(

@@ -76,39 +76,39 @@ The main function of this library is ``cluster``, which is declared as
 
 Parameters:
 
-   * ``periods``
+* ``periods``
 
-      Boundary condition of two directions, periodic (``true``) or not (``false``)
+   Boundary condition of two directions, periodic (``true``) or not (``false``)
 
-   * ``lengths``
+* ``lengths``
 
-      Physical sizes
+   Physical sizes
 
-   * ``sizes``
+* ``sizes``
 
-      Number of grid points
+   Number of grid points
 
-   * ``threshold``
+* ``threshold``
 
-      Threshold to draw contour lines
+   Threshold to draw contour lines
 
-   * ``xs``
+* ``xs``
 
-      ``x`` coordinate (length of this vector should be ``sizes[0]``)
+   ``x`` coordinate (length of this vector should be ``sizes[0]``)
 
-   * ``ys``
+* ``ys``
 
-      ``y`` coordinate (length of this vector should be ``sizes[1]``)
+   ``y`` coordinate (length of this vector should be ``sizes[1]``)
 
-   * ``values``
+* ``values``
 
-      Two-dimensional scalar field
+   Two-dimensional scalar field
 
-   * ``nclusters``
+* ``nclusters``
 
-      Result, number of clusters
+   Result, number of clusters
 
-   * ``clusters``
+* ``clusters``
 
-      Result, all polygonal chains
+   Result, all polygonal chains
 

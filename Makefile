@@ -10,6 +10,11 @@ OBJS     := $(addprefix $(OBJSDIR)/, $(subst $(SRCSDIR)/,,$(SRCS:.c=.o)))
 DEPS     := $(addprefix $(OBJSDIR)/, $(subst $(SRCSDIR)/,,$(SRCS:.c=.d)))
 TARGET   := a.out
 
+help:
+	@echo "all   : create \"$(TARGET)\""
+	@echo "clean : remove \"$(TARGET)\" and object files \"$(OBJSDIR)/*.o\""
+	@echo "help  : show this message"
+
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
