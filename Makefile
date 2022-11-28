@@ -1,7 +1,7 @@
 CC       := cc
 CFLAGS   := -std=c99 -O3 -Wall -Wextra
 DEPEND   := -MMD
-LIBS     :=
+LIBS     := -lm
 INCLUDES := -Iinclude
 SRCSDIR  := src
 OBJSDIR  := obj

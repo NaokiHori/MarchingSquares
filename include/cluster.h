@@ -10,11 +10,12 @@ typedef struct {
 } vector_t;
 
 typedef struct {
+  bool is_closed;
   size_t npoints;
   vector_t *points;
 } cluster_t;
 
-extern int cluster(
+extern int make_clusters(
     const bool periods[2],
     const double lengths[2],
     const size_t sizes[2],

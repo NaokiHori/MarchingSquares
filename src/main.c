@@ -6,7 +6,7 @@
 #include "simple_npyio.h"
 
 
-static int load_0d(const char fname[], double *val){
+static void load_0d(const char fname[], double *val){
   size_t ndims = 0;
   size_t *shape = NULL;
   char *dtype = NULL;
@@ -14,14 +14,14 @@ static int load_0d(const char fname[], double *val){
   FILE *fp = fopen(fname, "r");
   simple_npyio_r_header(&ndims, &shape, &dtype, &is_fortran_order, fp);
   assert(ndims == 0);
-  fread(val, sizeof(double), 1, fp);
+  const size_t retval = fread(val, sizeof(double), 1, fp);
+  assert(retval == 1);
   fclose(fp);
   free(shape);
   free(dtype);
-  return 0;
 }
 
-static int load_1d(const char fname[], size_t *nitems, double **vec){
+static void load_1d(const char fname[], size_t *nitems, double **vec){
   size_t ndims = 0;
   size_t *shape = NULL;
   char *dtype = NULL;
@@ -30,15 +30,15 @@ static int load_1d(const char fname[], size_t *nitems, double **vec){
   simple_npyio_r_header(&ndims, &shape, &dtype, &is_fortran_order, fp);
   assert(ndims == 1);
   *vec = calloc(shape[0], sizeof(double));
-  fread(*vec, sizeof(double), shape[0], fp);
+  const size_t retval = fread(*vec, sizeof(double), shape[0], fp);
+  assert(retval == shape[0]);
   *nitems = shape[0];
   fclose(fp);
   free(shape);
   free(dtype);
-  return 0;
 }
 
-static int load_2d(const char fname[], size_t **nitems, double **arr){
+static void load_2d(const char fname[], size_t **nitems, double **arr){
   size_t ndims = 0;
   size_t *shape = NULL;
   char *dtype = NULL;
@@ -48,10 +48,25 @@ static int load_2d(const char fname[], size_t **nitems, double **arr){
   assert(ndims == 2);
   *nitems = shape;
   *arr = calloc(shape[0] * shape[1], sizeof(double));
-  fread(*arr, sizeof(double), shape[0] * shape[1], fp);
+  const size_t retval = fread(*arr, sizeof(double), shape[0] * shape[1], fp);
+  assert(retval == shape[0] * shape[1]);
   fclose(fp);
   free(dtype);
-  return 0;
+}
+
+static void output(const char fname[], const size_t nclusters, cluster_t **clusters){
+  FILE *fp = fopen(fname, "w");
+  for(size_t n = 0; n < nclusters; n++){
+    const cluster_t *cluster = clusters[n];
+    const size_t npoints = cluster->npoints;
+    const vector_t *points = cluster->points;
+    for(size_t m = 0; m < npoints; m++){
+      const vector_t p = points[m];
+      fprintf(fp, "% .7f % .7f\n", p.x, p.y);
+    }
+    fprintf(fp, "\n");
+  }
+  fclose(fp);
 }
 
 int main(void){
@@ -77,32 +92,20 @@ int main(void){
   const double threshold = 0.5;
   size_t nclusters = 0;
   cluster_t **clusters = NULL;
-  cluster(periods, lengths, sizes, threshold, xc, yc, vof, &nclusters, &clusters);
-  // output result
-  FILE *fp = fopen("clusters.dat", "w");
-  for(size_t n = 0; n < nclusters; n++){
-    cluster_t *cluster = clusters[n];
-    const size_t npoints = cluster->npoints;
-    vector_t *points = cluster->points;
-    for(size_t m = 0; m < npoints; m++){
-      vector_t point = points[m];
-      const double x = point.x;
-      const double y = point.y;
-      fprintf(fp, "%5zu % .7f % .7f\n", m, x, y);
-    }
-    fprintf(fp, "\n");
-  }
-  fclose(fp);
-  // clean-up
-  free(nitems_vof);
-  free(xc);
-  free(yc);
-  free(vof);
+  make_clusters(periods, lengths, sizes, threshold, xc, yc, vof, &nclusters, &clusters);
+  // output results
+  output("clusters.dat", nclusters, clusters);
+  // clean-up clusters
   for(size_t n = 0; n < nclusters; n++){
     free(clusters[n]->points);
     free(clusters[n]);
   }
   free(clusters);
+  // clean-up others
+  free(nitems_vof);
+  free(xc);
+  free(yc);
+  free(vof);
   return 0;
 }
 
