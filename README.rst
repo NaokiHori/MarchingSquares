@@ -58,11 +58,11 @@ They can be visualised by ``Gnuplot``, e.g.,
 API
 ***
 
-The main function of this library is ``cluster``, which is declared as
+The main function of this library is ``make_clusters``, which is declared as
 
 .. code-block::
 
-   int cluster(
+   int make_clusters(
        const bool periods[2],
        const double lengths[2],
        const size_t sizes[2],
