@@ -2,13 +2,16 @@
 Marching Squares
 ################
 
-|License|_ |LastCommit|_
+|License|_ |LastCommit|_ |CI|_
 
 .. |License| image:: https://img.shields.io/github/license/NaokiHori/MarchingSquares
 .. _License: https://opensource.org/licenses/MIT
 
 .. |LastCommit| image:: https://img.shields.io/github/last-commit/NaokiHori/MarchingSquares/main
 .. _LastCommit: https://github.com/NaokiHori/MarchingSquares/commits/main
+
+.. |CI| image:: https://github.com/NaokiHori/MarchingSquares/actions/workflows/ci.yml/badge.svg
+.. _CI: https://github.com/NaokiHori/MarchingSquares/actions/workflows/ci.yml
 
 .. image:: https://github.com/NaokiHori/MarchingSquares/blob/main/.github/thumbnail.png
    :width: 100%
