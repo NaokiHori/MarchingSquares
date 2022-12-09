@@ -391,3 +391,65 @@ int make_clusters(const bool periods[2], const double lengths[2], const size_t s
   return 0;
 }
 
+/**
+ * @brief Visvalingam–Whyatt algorithm
+ * https://en.wikipedia.org/wiki/Visvalingam–Whyatt_algorithm
+ * @param[in] threshold : minimum size of triangular area
+ * @param[in] cluster   : pointer to cluster object to be processed
+ */
+int visvalingam_whyatt(const double threshold, cluster_t *cluster){
+  // naive, inefficient, but easy-to-understand implementation
+  // repeat until too-close points are fully eliminated
+  bool is_changed = true;
+  while(is_changed){
+    is_changed = false;
+    const size_t npoints = cluster->npoints;
+    vector_t *points = cluster->points;
+    size_t npoints_new = npoints;
+    vector_t *points_new = points;
+    for(size_t n1 = 0; n1 < npoints; n1++){
+      // extract neighbour points
+      const size_t n0 = n1 == 0 ? npoints-1 : n1-1;
+      const size_t n2 = n1 == npoints-1 ? 0 : n1+1;
+      const vector_t p0 = points[n0];
+      const vector_t p1 = points[n1];
+      const vector_t p2 = points[n2];
+      // consider the size of a triangle using these three neighbours
+      double area = 0.5 * (
+          + p0.x * p1.y
+          + p1.x * p2.y
+          + p2.x * p0.y
+          - p0.x * p2.y
+          - p2.x * p1.y
+          - p1.x * p0.y
+      );
+      // area = fabs(area)
+      area = area < 0. ? -area : area;
+      if(area < threshold){
+        // remove central point (index: n1)
+        npoints_new = npoints - 1;
+        if(npoints_new == 0){
+          points_new = NULL;
+        }else{
+          points_new = calloc(npoints_new, sizeof(vector_t));
+        }
+        for(size_t m = 0; m < n1; m++){
+          points_new[m    ] = points[m];
+        }
+        for(size_t m = n1 + 1; m < npoints; m++){
+          points_new[m - 1] = points[m];
+        }
+        free(points);
+        // one point is removed, meaning this cluster is changed
+        // need to check again
+        is_changed = true;
+        break;
+      }
+    }
+    // update
+    cluster->npoints = npoints_new;
+    cluster->points = points_new;
+  }
+  return 0;
+}
+

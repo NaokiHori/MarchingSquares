@@ -27,4 +27,9 @@ extern int make_clusters(
     cluster_t *** restrict clusters
 );
 
+extern int visvalingam_whyatt(
+    const double threshold,
+    cluster_t *cluster
+);
+
 #endif // CLUSTER_H
