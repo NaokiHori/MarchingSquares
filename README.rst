@@ -55,13 +55,13 @@ They can be visualised by ``Gnuplot``, e.g.,
 
 .. code-block::
 
-   $ plot 'clusters.dat' u 2:3 w lp
+   $ plot 'clusters.dat' u 1:2 w lp
 
 ***
 API
 ***
 
-The main function of this library is ``cluster``, which is declared as
+The main function of this library is ``make_clusters``, which is declared as
 
 .. code-block::
 
