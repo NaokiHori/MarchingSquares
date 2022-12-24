@@ -2,7 +2,7 @@
 Marching Squares
 ################
 
-|License|_ |LastCommit|_ |CI|_
+|License|_ |LastCommit|_ |CI|_ |Documentation|_
 
 .. |License| image:: https://img.shields.io/github/license/NaokiHori/MarchingSquares
 .. _License: https://opensource.org/licenses/MIT
@@ -12,6 +12,9 @@ Marching Squares
 
 .. |CI| image:: https://github.com/NaokiHori/MarchingSquares/actions/workflows/ci.yml/badge.svg
 .. _CI: https://github.com/NaokiHori/MarchingSquares/actions/workflows/ci.yml
+
+.. |Documentation| image:: https://github.com/NaokiHori/MarchingSquares/actions/workflows/documentation.yml/badge.svg
+.. _Documentation: https://naokihori.github.io/MarchingSquares
 
 .. image:: https://github.com/NaokiHori/MarchingSquares/blob/main/.github/thumbnail.png
    :width: 100%
@@ -114,4 +117,10 @@ Parameters:
 * ``clusters``
 
    Result, all polygonal chains
+
+*************
+Documentation
+*************
+
+Minor but non-trivial things are documented `here <https://naokihori.github.io/MarchingSquares/>`_.
 

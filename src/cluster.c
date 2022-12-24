@@ -267,6 +267,7 @@ static arrows_t define_arrow(const edge_t tail, const edge_t head){
  * @return             : arrows
  */
 static arrows_t find_arrows(const vertices_t vertices){
+  /* ! possible arrow types ! 56 ! */
   arrows_t arrows = 0;
   switch(vertices){
     case 0:
@@ -449,8 +450,7 @@ static int walk(const bool periods[2], const double lengths[2], const size_t siz
  * @return               : reserved for error code
  */
 int make_clusters(const bool periods[2], const double lengths[2], const size_t sizes_[2], const double threshold, const double *xs, const double *ys, const double *values, size_t *nclusters, cluster_t ***clusters_){
-  // number of cells (NOT size of "values") in each direction
-  // here vertices of cell are where "values" are defined
+  /* ! number of cells (NOT size of "values") in each direction ! 3 ! */
   const size_t nx = periods[0] ? sizes_[0] : sizes_[0]-1;
   const size_t ny = periods[1] ? sizes_[1] : sizes_[1]-1;
   const size_t sizes[2] = {nx, ny};
