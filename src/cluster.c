@@ -3,50 +3,22 @@
 #include "cluster.h"
 
 
+// return value of functions
+//   to tell success or failure
 static const int retval_success = 0;
 static const int retval_failure = 1;
 
-static int go_to_neg(const bool is_periodic, const double length, const size_t nitems, size_t *index, double *pcor){
-  if(*index != 0){
-    *index = *index - 1;
-    return retval_success;
-  }else{
-    if(is_periodic){
-      *index = nitems - 1;
-      *pcor -= length;
-      return retval_success;
-    }else{
-      return retval_failure;
-    }
-  }
-}
-
-static int go_to_pos(const bool is_periodic, const double length, const size_t nitems, size_t *index, double *pcor){
-  if(*index != nitems - 1){
-    *index = *index + 1;
-    return retval_success;
-  }else{
-    if(is_periodic){
-      *index = 0;
-      *pcor += length;
-      return retval_success;
-    }else{
-      return retval_failure;
-    }
-  }
-}
-
-// information on vertices, from (x-neg, y-neg) to anti-clockwise
-// 1: value > threshold
-// 0: value < threshold
-//
-// Each bit
+// datatype to store information attached to each vertex of a cell,
+//   from (x-neg, y-neg) corner to anti-clockwise
 //
 //    4th   3rd
 //     +-----+
 //     |     |
 //     +-----+
 //    1st   2nd
+//
+// 1: value > threshold
+// 0: value < threshold
 //
 // E.g.,
 //
@@ -61,25 +33,54 @@ static int go_to_pos(const bool is_periodic, const double length, const size_t n
 //   which is used for saddle cells
 typedef uint8_t vertices_t;
 
-// information of arrow(s) in each cell
-// head / tail directions are stored:
+// datatype to identify edge of a cell, from y-negative to anti-clockwise,
+// i.e.,
 //   0 (= 0b00): y-negative
 //   1 (= 0b01): x-positive
 //   2 (= 0b10): y-positive
 //   3 (= 0b11): x-negative
+typedef enum {
+  EDGE_Y_NEG = 0,
+  EDGE_X_POS = 1,
+  EDGE_Y_POS = 2,
+  EDGE_X_NEG = 3
+} edge_t;
+
+// datatype to store information of arrow(s) contained in each cell
+// head / tail locations (type: edge_t) are stored:
 // 0bxxxxxxxx
-//         -- tail direction (1st arrow)
-//       --   head direction (1st arrow)
-//     --     tail direction (2nd arrow, only saddle)
-//   --       head direction (2nd arrow, only saddle)
+//         -- edge where tail locates (1st arrow)
+//       --   edge where head locates (1st arrow)
+//     --     edge where tail locates (2nd arrow, only saddle)
+//   --       edge where head locates (2nd arrow, only saddle)
+//
+// e.g., arrow from y-positive (2) to x-negative (3)
+//
+//     +-----+
+//     |  /  |
+//     | /   |
+//     |v    |  0b 00 00 11 10
+//     |     |     -- --
+//     +-----+   (not used)
+//
 typedef uint8_t arrows_t;
 
-// node for singly-linked list
+/**
+ * @struct node_t_ (or node_t)
+ * @brief structure to achieve singly-linked list for general use
+ * @var data : pointer to the data to be linked and ordered
+ * @var next : pointer to the next node (NULL when I am the last node)
+ */
 typedef struct node_t_ {
   void *data;
   struct node_t_ *next;
 } node_t;
 
+/**
+ * @brief Count number of items contained in the given linked list
+ * @param[in] root_node : root node of the linked list to be considered
+ * @return              : number of items (0 if the list is empty: root_node == NULL)
+ */
 static size_t count_nitems_of_list(node_t *root_node){
   size_t nitems = 0;
   while(root_node){
@@ -89,9 +90,17 @@ static size_t count_nitems_of_list(node_t *root_node){
   return nitems;
 }
 
+/**
+ * @brief create a new node holding the given data and insert it to the given linked list
+ * @param[in,out] root_node : root node of the linked list to be considered
+ * @param[in]     to_head   : whether adding the new node
+ *                              to the head of the list (True), or
+ *                              to the tail of the list (False)
+ * @param[in]     data      : pointer to the data which is to be attached to the new node
+ */
 static void insert_to_list(node_t **root_node, const bool to_head, void *data){
-  /* add a new node with a given data to singly-linked list */
   // allocate new node, assign data
+  // NOTE: data is NOT copied
   node_t *new_node = calloc(1, sizeof(node_t));
   new_node->data = data;
   // insert to the given linked list
@@ -116,15 +125,74 @@ static void insert_to_list(node_t **root_node, const bool to_head, void *data){
   }
 }
 
+/**
+ * @brief Walking to negative direction: decrementing the given index
+ * @param[in]     is_periodic : flag telling the boundary condition in the direction
+ * @param[in]     length      : size of the domain in the direction
+ * @param[in]     nitems      : number of grid points in the direction
+ * @param[in,out] index       : where I am now and I will walk toward in the direction
+ * @param[in,out] pcor        : offset coming from domain periodicity in the direction
+ */
+static int go_to_neg(const bool is_periodic, const double length, const size_t nitems, size_t *index, double *pcor){
+  if(*index != 0){
+    *index = *index - 1;
+    return retval_success;
+  }else{
+    if(is_periodic){
+      *index = nitems - 1;
+      *pcor -= length;
+      return retval_success;
+    }else{
+      return retval_failure;
+    }
+  }
+}
+
+/**
+ * @brief Walking to positive direction: incrementing the given index
+ * @param[in]     is_periodic : flag telling the boundary condition in the direction
+ * @param[in]     length      : size of the domain in the direction
+ * @param[in]     nitems      : number of grid points in the direction
+ * @param[in,out] index       : where I am now and I will walk toward in the direction
+ * @param[in,out] pcor        : offset coming from domain periodicity in the direction
+ */
+static int go_to_pos(const bool is_periodic, const double length, const size_t nitems, size_t *index, double *pcor){
+  if(*index != nitems - 1){
+    *index = *index + 1;
+    return retval_success;
+  }else{
+    if(is_periodic){
+      *index = 0;
+      *pcor += length;
+      return retval_success;
+    }else{
+      return retval_failure;
+    }
+  }
+}
+
+/**
+ * @brief Append a cluster consisted of several points
+ *          to a linked list storing all clusters
+ * @param[in,out] root_node_cluster : root node of a linked list storing all clusters
+ * @param[in]     is_closed         : whether the new cluster is a closed or not
+ * @param[in,out] root_node_point   : root node of a linked list storing all points,
+ *                                      which will be cleaned-up after the data is copied to "root_node_cluster"
+ */
 static void append_cluster(node_t **root_node_cluster, const bool is_closed, node_t **root_node_point){
-  // count number of points
+  // count number of points contained in the new cluster
   size_t npoints = count_nitems_of_list(*root_node_point);
-  // allocate cluster_t
+  // allocate cluster_t and assign information:
+  //   1. number of points
+  //   2. whether the new cluster is closed
+  //   3. coordinates of all points
   cluster_t *cluster = calloc(1, sizeof(cluster_t));
   cluster->npoints = npoints;
   cluster->is_closed = is_closed;
   cluster->points = calloc(npoints, sizeof(vector_t));
-  // copy points to cluster_t
+  // create a new node describing a cluster
+  // NOTE: here singly-linked list holding coordinates is converted to a vector,
+  //   since vectors are (in general) easier to handle later
   {
     node_t *node = *root_node_point;
     for(size_t n = 0; n < npoints; n++){
@@ -134,10 +202,13 @@ static void append_cluster(node_t **root_node_cluster, const bool is_closed, nod
       node = node->next;
     }
   }
-  // insert a node whose data is the above cluster to singly-linked list
-  //   true: add to the head
+  // insert a new node to the given singly-linked list
+  // NOTE: "true" indicates the node will be added to the head
   insert_to_list(root_node_cluster, true, cluster);
-  // deallocate original node storing points
+  // deallocate the given linked list which stores coordinates,
+  //   since the data is already duplicated to a vector
+  //   and the original one is no longer needed
+  // NOTE: this process can be merged but exist here for simplicity
   while(*root_node_point){
     node_t *node = *root_node_point;
     *root_node_point = (*root_node_point)->next;
@@ -146,22 +217,55 @@ static void append_cluster(node_t **root_node_cluster, const bool is_closed, nod
   }
 }
 
+/**
+ * @struct cell_t
+ * @brief structure to store "cell",
+ *          whose vertices correspond to the locations where the input 2D array is defined
+ * @var arrows     : segment(s) (contour lines) connecting edges
+ * @var intercepts : coordinates on the cell boundaries where the "arrows" intercept
+ */
 typedef struct {
-  arrows_t arrows;
   vector_t *intercepts;
+  arrows_t arrows;
 } cell_t;
 
-static double interpolate(const double y0, const double xm, const double xp, const double ym, const double yp){
-  return xm + (y0 - ym) / (yp - ym) * (xp - xm);
+/**
+ * @brief compute value at x_0 by the linear interpolation,
+ *          i.e., following y = ax + b with given ym = y(xm) and yp = y(xp)
+ * @param[in] x0 : coordinate where the interpolated value is desired
+ * @param[in] xm : coordinate where one value ym is defined
+ * @param[in] xp : coordinate where one value yp is defined
+ * @param[in] ym : value at xm
+ * @param[in] yp : value at xp
+ */
+static double interpolate(const double x0, const double xm, const double xp, const double ym, const double yp){
+  return ym + (yp - ym) / (xp - xm) * (x0 - xm);
 }
 
-static arrows_t define_arrow(const uint8_t tail, const uint8_t head){
+/**
+ * @brief create arrow from tail and head positions
+ * @param[in] tail : edge where the tail of the arrow sits
+ * @param[in] head : edge where the head of the arrow sits
+ * @return         : arrow
+ */
+static arrows_t define_arrow(const edge_t tail, const edge_t head){
+  // 0bxxxxxxxx
+  //         -- edge where tail locates (0 left bit shift)
+  //       --   edge where head locates (2 left bit shift)
+  // NOTE: saddle cell has two arrows, which are stored between 4th and 7th bits
+  //       left four bit shift should be done outside this function
   arrows_t arrow = 0;
   arrow |= (tail << 0);
   arrow |= (head << 2);
   return arrow;
 }
 
+/**
+ * @brief find arrows in a cell from information on four vertices
+ * @param[in] vertices : vertices flagged by
+ *                         whether scalar values are above or below the threshold
+ * @return             : arrows
+ */
 static arrows_t find_arrows(const vertices_t vertices){
   arrows_t arrows = 0;
   switch(vertices){
@@ -169,48 +273,48 @@ static arrows_t find_arrows(const vertices_t vertices){
       arrows |= 0;
       break;
     case 1:
-      arrows |= define_arrow(3, 0) << 0;
+      arrows |= define_arrow(EDGE_X_NEG, EDGE_Y_NEG) << 0;
       break;
     case 2:
-      arrows |= define_arrow(0, 1) << 0;
+      arrows |= define_arrow(EDGE_Y_NEG, EDGE_X_POS) << 0;
       break;
     case 3:
-      arrows |= define_arrow(3, 1) << 0;
+      arrows |= define_arrow(EDGE_X_NEG, EDGE_X_POS) << 0;
       break;
     case 4:
-      arrows |= define_arrow(1, 2) << 0;
+      arrows |= define_arrow(EDGE_X_POS, EDGE_Y_POS) << 0;
       break;
     case 5:
-      arrows |= define_arrow(1, 2) << 0;
-      arrows |= define_arrow(3, 0) << 4;
+      arrows |= define_arrow(EDGE_X_POS, EDGE_Y_POS) << 0;
+      arrows |= define_arrow(EDGE_X_NEG, EDGE_Y_NEG) << 4;
       break;
     case 6:
-      arrows |= define_arrow(0, 2) << 0;
+      arrows |= define_arrow(EDGE_Y_NEG, EDGE_Y_POS) << 0;
       break;
     case 7:
-      arrows |= define_arrow(3, 2) << 0;
+      arrows |= define_arrow(EDGE_X_NEG, EDGE_Y_POS) << 0;
       break;
     case 8:
-      arrows |= define_arrow(2, 3) << 0;
+      arrows |= define_arrow(EDGE_Y_POS, EDGE_X_NEG) << 0;
       break;
     case 9:
-      arrows |= define_arrow(2, 0) << 0;
+      arrows |= define_arrow(EDGE_Y_POS, EDGE_Y_NEG) << 0;
       break;
     case 10:
-      arrows |= define_arrow(0, 1) << 0;
-      arrows |= define_arrow(2, 3) << 4;
+      arrows |= define_arrow(EDGE_Y_NEG, EDGE_X_POS) << 0;
+      arrows |= define_arrow(EDGE_Y_POS, EDGE_X_NEG) << 4;
       break;
     case 11:
-      arrows |= define_arrow(2, 1) << 0;
+      arrows |= define_arrow(EDGE_Y_POS, EDGE_X_POS) << 0;
       break;
     case 12:
-      arrows |= define_arrow(1, 3) << 0;
+      arrows |= define_arrow(EDGE_X_POS, EDGE_X_NEG) << 0;
       break;
     case 13:
-      arrows |= define_arrow(1, 0) << 0;
+      arrows |= define_arrow(EDGE_X_POS, EDGE_Y_NEG) << 0;
       break;
     case 14:
-      arrows |= define_arrow(0, 3) << 0;
+      arrows |= define_arrow(EDGE_Y_NEG, EDGE_X_NEG) << 0;
       break;
     case 15:
       arrows |= 0;
@@ -222,6 +326,17 @@ static arrows_t find_arrows(const vertices_t vertices){
   return arrows;
 }
 
+/**
+ * @brief initialise "cells" to prepare for clustering
+ * @param[in] periods   : periodicities
+ * @param[in] lengths   : lengths
+ * @param[in] sizes_    : number of points where 2D array is defined
+ * @param[in] threshold : threshold to separate two regimes
+ * @param[in] xs        : coordinates in x
+ * @param[in] ys        : coordinates in y
+ * @param[in] values    : 2D array
+ * @return              : all cells with required information
+ */
 static cell_t *init_cells(const bool periods[2], const double lengths[2], const size_t sizes_[2], const double threshold, const double *xs, const double *ys, const double *values){
   const size_t nx = periods[0] ? sizes_[0] : sizes_[0]-1;
   const size_t ny = periods[1] ? sizes_[1] : sizes_[1]-1;
@@ -248,7 +363,7 @@ static cell_t *init_cells(const bool periods[2], const double lengths[2], const 
         if(periods[1] && j == ny-1){
           lys[1] += lengths[1];
         }
-        // anti-clockwise
+        // anti-clockwise, from x-neg-y-neg vertex
         lvals[0] = values[jm * sizes_[0] + im];
         lvals[1] = values[jm * sizes_[0] + ip];
         lvals[2] = values[jp * sizes_[0] + ip];
@@ -260,54 +375,79 @@ static cell_t *init_cells(const bool periods[2], const double lengths[2], const 
         const bool is_above = (lvals[n] > threshold);
         vertices |= ( 1 & (unsigned int)(is_above) ) << n;
       }
-      // convert to arrows
-      arrows_t arrows = find_arrows(vertices);
-      /* intercepts of cell faces and interface */
+      // convert flagged vertices to arrows in this cell
+      const arrows_t arrows = find_arrows(vertices);
+      /* intercepts of cell edges and arrows */
       vector_t *intercepts = calloc(4, sizeof(vector_t));
-      // y-negative face
-      intercepts[0].x = interpolate(threshold, lxs[0], lxs[1], lvals[0], lvals[1]);
-      intercepts[0].y = lys[0];
-      // x-positive face
-      intercepts[1].x = lxs[1];
-      intercepts[1].y = interpolate(threshold, lys[0], lys[1], lvals[1], lvals[2]);
-      // y-positive face
-      intercepts[2].x = interpolate(threshold, lxs[1], lxs[0], lvals[2], lvals[3]);
-      intercepts[2].y = lys[1];
-      // x-negative face
-      intercepts[3].x = lxs[0];
-      intercepts[3].y = interpolate(threshold, lys[1], lys[0], lvals[3], lvals[0]);
+      // y-negative edge, interpolated from x-neg,y-neg and x-pos,y-neg vertices
+      intercepts[EDGE_Y_NEG].x = interpolate(threshold, lvals[0], lvals[1], lxs[0], lxs[1]);
+      intercepts[EDGE_Y_NEG].y = lys[0];
+      // x-positive edge
+      intercepts[EDGE_X_POS].x = lxs[1];
+      intercepts[EDGE_X_POS].y = interpolate(threshold, lvals[1], lvals[2], lys[0], lys[1]);
+      // y-positive edge
+      intercepts[EDGE_Y_POS].x = interpolate(threshold, lvals[2], lvals[3], lxs[1], lxs[0]);
+      intercepts[EDGE_Y_POS].y = lys[1];
+      // x-negative edge
+      intercepts[EDGE_X_NEG].x = lxs[0];
+      intercepts[EDGE_X_NEG].y = interpolate(threshold, lvals[3], lvals[0], lys[1], lys[0]);
       /* assign */
-      cells[j * nx + i].arrows = arrows;
-      cells[j * nx + i].intercepts = intercepts;
+      cell_t *cell     = cells + j * nx + i;
+      cell->arrows     = arrows;
+      cell->intercepts = intercepts;
     }
   }
   return cells;
 }
 
-static int walk(const bool periods[2], const double lengths[2], const size_t sizes[2], const arrows_t dir, size_t *i, size_t *j, vector_t *pcor){
+/**
+ * @brief move to the neighbouring cell (i.e., moving index)
+ * @param[in] periods : periodicities
+ * @param[in] lengths : lengths
+ * @param[in] sizes   : number of points
+ * @param[in] edge    : edge type
+ * @param[in,out] i   : index in x direction
+ * @param[in,out] j   : index in y direction
+ * @param[in] pcor    : 2D array
+ * @return            : error code, success or not
+ */
+static int walk(const bool periods[2], const double lengths[2], const size_t sizes[2], const edge_t edge, size_t *i, size_t *j, vector_t *pcor){
   // move forward
   // return "retval_failure" when hit one of the walls
   int retval;
-  switch(dir){
-    case 0:
+  switch(edge){
+    case EDGE_Y_NEG:
       retval = go_to_neg(periods[1], lengths[1], sizes[1], j, &(pcor->y));
       break;
-    case 1:
+    case EDGE_X_POS:
       retval = go_to_pos(periods[0], lengths[0], sizes[0], i, &(pcor->x));
       break;
-    case 2:
+    case EDGE_Y_POS:
       retval = go_to_pos(periods[1], lengths[1], sizes[1], j, &(pcor->y));
       break;
-    case 3:
+    case EDGE_X_NEG:
       retval = go_to_neg(periods[0], lengths[0], sizes[0], i, &(pcor->x));
       break;
     default:
-      printf("%d: should not be here (%u)\n", __LINE__, dir);
+      printf("%d: should not be here (%u)\n", __LINE__, edge);
       exit(EXIT_FAILURE);
   }
   return retval;
 }
 
+/**
+ * @brief main function taking care of the marching square and clustering algorithm
+ * @param[in] periods    : periodicities (0th element: x, 1st element: y)
+ * @param[in] lengths    : lengths
+ * @param[in] sizes_     : number of points
+ * @param[in] threshold  : threshold to distinguish two regimes
+ * @param[in] xs         : coordinates in x directioon (length: sizes_[0])
+ * @param[in] ys         : coordinates in y directioon (length: sizes_[1])
+ * @param[in] values     : input 2D array (sizes_[0] x sizes_[1])
+ * @param[out] nclusters : number of clusters
+ * @param[out] clusters_ : clusters
+ * @return               : reserved for error code
+ */
 int make_clusters(const bool periods[2], const double lengths[2], const size_t sizes_[2], const double threshold, const double *xs, const double *ys, const double *values, size_t *nclusters, cluster_t ***clusters_){
   // number of cells (NOT size of "values") in each direction
   // here vertices of cell are where "values" are defined
@@ -319,43 +459,51 @@ int make_clusters(const bool periods[2], const double lengths[2], const size_t s
   node_t *clusters = NULL;
   for(size_t j_start = 0; j_start < ny; j_start++){
     for(size_t i_start = 0; i_start < nx; i_start++){
-      if(cells[j_start * nx + i_start].arrows == 0){
+      // arrow inside this cell,
+      //   which is a candidate from which I start walking
+      const arrows_t arrows_start = cells[j_start * nx + i_start].arrows;
+      if(arrows_start == 0){
         // no arrow exists
         continue;
       }
       // cell including arrow(s) is found
       size_t i = i_start;
       size_t j = j_start;
-      // save arrow for reverse walk after collding with a wall
+      // reverse walk after collding with a wall, initially false
       bool reversed = false;
-      const arrows_t arrows_start = cells[j * nx + i].arrows;
       // periodicity corrections
       vector_t pcor = { .x = 0., .y = 0. };
       // walk around until
       //   1. a closed loop is created
       //   or
-      //   2. hit walls twice
+      //   2. hit walls twice (walk back and forth) if not closed
       node_t *points = NULL;
-      for(size_t cnt_hit_wall = 0;;){
+      while(true){
         cell_t *cell = &(cells[j * nx + i]);
         const vector_t *intercepts = cell->intercepts;
         arrows_t *arrows = &(cell->arrows);
-        const arrows_t tail = (*arrows >> 0) & 3;
-        const arrows_t head = (*arrows >> 2) & 3;
-        const arrows_t dir = reversed ? head : tail;
+        // extract edge where head & tail locate
+        // NOTE: 3 = bit mask 0b00000011
+        const edge_t tail = (*arrows >> 0) & 3;
+        const edge_t head = (*arrows >> 2) & 3;
+        // take location (coordinate) of arrow tail by default,
+        //   take one of head if walking to the reverse direction
+        const edge_t dir = reversed ? head : tail;
+        // append point to the linked list
         vector_t *point = calloc(1, sizeof(vector_t));
         point->x = intercepts[dir].x + pcor.x;
         point->y = intercepts[dir].y + pcor.y;
         insert_to_list(&points, reversed, point);
         // erase arrow
         (*arrows) >>= 4;
+        // move to the new cell
         int retval = walk(periods, lengths, sizes, dir, &i, &j, &pcor);
         if(retval == retval_failure){
           // hit wall, go back to the start
-          //   and move to the other direction
-          cnt_hit_wall += 1;
-          // hit walls twice
-          if(cnt_hit_wall >= 2){
+          //   and move to the opposite direction
+          if(reversed){
+            // this is the second time to hit the boundaries
+            // terminate walking
             break;
           }
           i = i_start;
@@ -366,20 +514,22 @@ int make_clusters(const bool periods[2], const double lengths[2], const size_t s
           cells[j * nx + i].arrows = arrows_start;
           continue;
         }
-        // complete loop
         if(i == i_start && j == j_start){
+          // we are now back to the start,
+          //   indicating a closed loop is formed
           break;
         }
       }
-      // "reversed == true" means it is not closed (looped)
+      // "reversed == true" means it is not closed
       append_cluster(&clusters, !reversed, &points);
     }
   }
+  // clean-up cells, which are no longer needed
   for(size_t n = 0; n < nx * ny; n++){
     free(cells[n].intercepts);
   }
   free(cells);
-  // convert singly-linked list "clusters" to desired shape
+  // convert singly-linked list "clusters" to a desired shape
   *nclusters = count_nitems_of_list(clusters);
   *clusters_ = calloc(*nclusters, sizeof(cluster_t*));
   for(size_t n = 0; n < *nclusters; n++){

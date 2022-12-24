@@ -10,9 +10,9 @@ typedef struct {
 } vector_t;
 
 typedef struct {
-  bool is_closed;
   size_t npoints;
   vector_t *points;
+  bool is_closed;
 } cluster_t;
 
 extern int make_clusters(
