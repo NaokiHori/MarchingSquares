@@ -1,0 +1,34 @@
+name: CI
+
+on:
+
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - include/**
+      - .github/workflows/**
+
+jobs:
+
+  build-and-execute:
+    name: Build library and try stand-alone run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@main
+        with:
+          repository: 'NaokiHori/MarchingSquares'
+          ref: ${{ github.ref_name }}
+      - name: Install dependencies
+        run: |
+          sudo apt-get -y update && \
+          sudo apt-get -y install make
+      - name: Compile
+        run: |
+          make all
+      - name: Run
+        run: |
+          ./a.out
+
